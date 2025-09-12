@@ -18,4 +18,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://pallavi_yadav:$HF_TOKEN@huggingface.co/spaces/New-Document-summarizer-assistant main
+        run: git push --force https://pallavi_yadav:$HF_TOKEN@huggingface.co/spaces/New-Document-summarizer-assistant main
