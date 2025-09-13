@@ -1,53 +1,54 @@
-import os
 import streamlit as st
-from helper_funcs import extract_text_from_pdf, extract_text_from_image, summarize_large_text, extract_highlights
-from pathlib import Path
+import pdfplumber
+import pytesseract
+from PIL import Image
+from transformers import pipeline
+from pdf2image import convert_from_bytes
 
-st.set_page_config(page_title="Document Summary Assistant", layout="centered")
-st.title("Document Summary Assistant (Python - Streamlit)")
+# Load summarizer (lightweight model for Hugging Face/Streamlit Cloud)
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
-# Token: prefer st.secrets (HuggingFace Spaces) or environment variable
-HF_TOKEN = st.secrets.get("HF_TOKEN") if "HF_TOKEN" in st.secrets else os.environ.get("HF_TOKEN", "")
+st.title("📄 Document Summary Assistant")
+st.write("Upload a PDF or Image, and get a concise summary using AI.")
 
-mode = st.radio("Summary length", ["short", "medium", "long"])
-uploaded = st.file_uploader("Upload PDF or image", type=["pdf","png","jpg","jpeg","tiff"])
+# File upload
+uploaded_file = st.file_uploader("Upload a PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
-if not HF_TOKEN:
-    st.warning("Please add your Hugging Face API token in Secrets (HF_TOKEN).")
+if uploaded_file:
+    text = ""
 
-if uploaded:
-    tmpdir = Path("/tmp/uploads")
-    tmpdir.mkdir(parents=True, exist_ok=True)
-    fpath = tmpdir / uploaded.name
-    fpath.write_bytes(uploaded.getvalue())
+    # 📄 If it's a PDF
+    if uploaded_file.type == "application/pdf":
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text
 
-    with st.spinner("Extracting text..."):
+        # 🔁 Fallback: if no text, try OCR on PDF pages
+        if not text.strip():
+            uploaded_file.seek(0)  # reset file pointer
+            pdf_images = convert_from_bytes(uploaded_file.read())
+            for img in pdf_images:
+                text += pytesseract.image_to_string(img)
+
+    # 🖼️ If it's an image
+    else:
+        img = Image.open(uploaded_file)
+        text = pytesseract.image_to_string(img)
+
+    # ✅ Summarization
+    if text.strip():
+        # Trim text if too long for model
+        if len(text) > 1000:
+            text = text[:1000]
+
         try:
-            if uploaded.type == "application/pdf" or uploaded.name.lower().endswith(".pdf"):
-                text = extract_text_from_pdf(str(fpath))
-            else:
-                text = extract_text_from_image(str(fpath))
-        except Exception as e:
-            st.error("Extraction error: " + str(e))
-            st.stop()
-
-    st.subheader("Extracted text (preview)")
-    st.text_area("", text[:6000], height=220)
-
-    if st.button("Generate summary"):
-        if not HF_TOKEN:
-            st.error("HF token missing. Add HF_TOKEN to Secrets and retry.")
-        else:
-            with st.spinner("Generating summary..."):
-                try:
-                    summary = summarize_large_text(text, HF_TOKEN, mode=mode)
-                    highlights = extract_highlights(text, summary)
-                except Exception as e:
-                    st.error("Summarization error: " + str(e))
-                    st.stop()
-
+            summary = summarizer(text, max_length=100, min_length=30, do_sample=False)
             st.subheader("Summary")
-            st.write(summary)
-            st.subheader("Key Highlights")
-            for h in highlights:
-                st.markdown(f"- {h}")
+            st.write(summary[0]['summary_text'])
+        except Exception as e:
+            st.error(f"Summarization failed: {e}")
+    else:
+        st.warning("⚠️ No readable text found in this file. Try another document.")
+
