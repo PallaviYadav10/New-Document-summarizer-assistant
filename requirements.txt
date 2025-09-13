@@ -1,5 +1,8 @@
 streamlit
-pymupdf
-pillow
+pdfplumber
 pytesseract
-requests
+pillow
+transformers
+torch
+pdf2image
+
