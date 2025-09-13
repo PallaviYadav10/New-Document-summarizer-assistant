@@ -6,7 +6,12 @@ from transformers import pipeline
 from pdf2image import convert_from_bytes
 
 # Load summarizer (lightweight model for Hugging Face/Streamlit Cloud)
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+import os
+os.environ["TRANSFORMERS_CACHE"] = "/tmp"
+
+from transformers import pipeline
+summarizer = pipeline("summarization", model="t5-small")
+
 
 st.title("📄 Document Summary Assistant")
 st.write("Upload a PDF or Image, and get a concise summary using AI.")
